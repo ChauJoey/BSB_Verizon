@@ -1,8 +1,11 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import requests
 import logging
 import os
+import json
+import base64
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -15,9 +18,9 @@ WEBHOOK_USERNAME = os.getenv("WEBHOOK_USERNAME")
 WEBHOOK_PASSWORD = os.getenv("WEBHOOK_PASSWORD")
 
 
-# =========================
-# Basic Auth 验证
-# =========================
+# =========================================
+# Basic Auth
+# =========================================
 
 def verify_basic_auth(auth_header: str):
 
@@ -25,14 +28,15 @@ def verify_basic_auth(auth_header: str):
         return False
 
     try:
+
         scheme, credentials = auth_header.split()
 
         if scheme.lower() != "basic":
             return False
 
-        import base64
-
-        decoded = base64.b64decode(credentials).decode()
+        decoded = base64.b64decode(
+            credentials
+        ).decode()
 
         username, password = decoded.split(":")
 
@@ -41,102 +45,137 @@ def verify_basic_auth(auth_header: str):
             and password == WEBHOOK_PASSWORD
         )
 
-    except Exception:
+    except Exception as e:
+
+        logging.error(str(e))
+
         return False
 
 
-# =========================
+# =========================================
 # Health Check
-# =========================
+# =========================================
 
 @app.get("/")
-async def health():
+async def root():
+
     return {
         "status": "ok"
     }
 
 
-# =========================
+@app.get("/webhook/gps")
+async def gps_get():
+
+    return {
+        "webhook": "running"
+    }
+
+
+# =========================================
 # GPS Webhook
-# =========================
+# =========================================
 
 @app.post("/webhook/gps")
 async def gps_webhook(request: Request):
 
-    # -------------------------
+    # -------------------------------------
     # Basic Auth
-    # -------------------------
+    # -------------------------------------
 
-    auth_header = request.headers.get("Authorization")
+    auth_header = request.headers.get(
+        "Authorization"
+    )
 
     if not verify_basic_auth(auth_header):
 
         return JSONResponse(
             status_code=401,
-            content={"error": "Unauthorized"},
+            content={
+                "error": "Unauthorized"
+            },
             headers={
                 "WWW-Authenticate": "Basic"
             }
         )
 
-    # -------------------------
+    # -------------------------------------
     # SNS Message Type
-    # -------------------------
+    # -------------------------------------
 
     message_type = request.headers.get(
         "x-amz-sns-message-type"
     )
 
-    body = await request.json()
-
     logging.info(f"Message Type: {message_type}")
+
+    # -------------------------------------
+    # Read raw body
+    # SNS uses text/plain
+    # -------------------------------------
+
+    raw_body = await request.body()
+
+    body = json.loads(
+        raw_body.decode()
+    )
+
     logging.info(body)
 
-    # =========================
+    # =====================================
     # Subscription Confirmation
-    # =========================
+    # =====================================
 
     if message_type == "SubscriptionConfirmation":
 
-        subscribe_url = body.get("SubscribeURL")
+        subscribe_url = body.get(
+            "SubscribeURL"
+        )
 
-        if subscribe_url:
+        logging.info(
+            f"Confirming subscription: {subscribe_url}"
+        )
 
-            try:
+        try:
 
-                response = requests.get(subscribe_url)
+            response = requests.get(
+                subscribe_url
+            )
 
-                logging.info(
-                    f"Subscription confirmed: {response.status_code}"
-                )
+            logging.info(
+                f"Subscription confirmed: {response.status_code}"
+            )
 
-            except Exception as e:
+        except Exception as e:
 
-                logging.error(
-                    f"Subscription confirmation failed: {str(e)}"
-                )
+            logging.error(
+                f"Subscription confirmation failed: {str(e)}"
+            )
 
-                raise HTTPException(
-                    status_code=500,
-                    detail="Subscription confirmation failed"
-                )
-
-    # =========================
+    # =====================================
     # GPS Notification
-    # =========================
+    # =====================================
 
     elif message_type == "Notification":
 
         data = body.get("data", {})
 
-        logging.info("GPS DATA RECEIVED")
+        logging.info(
+            "GPS DATA RECEIVED"
+        )
+
+        vehicle = data.get("vehicle", {})
+        driver = data.get("driver", {})
+        address = data.get("address", {})
 
         logging.info(
-            f"Vehicle: {data.get('vehicle', {}).get('name')}"
+            f"Vehicle: {vehicle.get('name')}"
         )
 
         logging.info(
-            f"Driver: {data.get('driver', {}).get('driverFirstName')}"
+            f"Driver: "
+            f"{driver.get('driverFirstName')} "
+            f"{driver.get('driverLastName')}"
         )
 
         logging.info(
@@ -148,14 +187,33 @@ async def gps_webhook(request: Request):
         )
 
         logging.info(
-            f"Speed: {data.get('speedKmph')}"
+            f"Speed: {data.get('speedKmph')} km/h"
+        )
+
+        logging.info(
+            f"State: {data.get('displayState')}"
+        )
+
+        logging.info(
+            f"Address: "
+            f"{address.get('addressLine1')}"
         )
 
         # TODO:
-        # 存数据库
-        # 推送Redis/Kafka
-        # AI Dispatcher分析
-        # Geofence判断
+        # Save to PostgreSQL
+        # Push to Redis/Kafka
+        # AI Dispatcher
+        # Geofence Logic
+
+    else:
+
+        logging.warning(
+            f"Unknown message type: {message_type}"
+        )
+
+    # =====================================
+    # MUST return 200
+    # =====================================
 
     return {
         "success": True
