@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Environment Variables
+.env
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Pytest
+.pytest_cache/
+
+# Mypy
+.mypy_cache/
+
+# Ruff
+.ruff_cache/
+
+# Coverage
+.coverage
+htmlcov/
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# SQLite
+*.db
+
+# Render
+.render/
+
+# Temporary files
+*.tmp
+*.bak
+
+# Mac
+.AppleDouble
+.LSOverride
+
+# Windows
+Desktop.ini
+
+# Secrets
+secrets.json
+credentials.json
+service-account.json
