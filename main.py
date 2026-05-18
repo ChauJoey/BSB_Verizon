@@ -79,6 +79,16 @@ async def gps_get():
 @app.post("/webhook/gps")
 async def gps_webhook(request: Request):
 
+    print("WEBHOOK HIT")
+
+    raw_body = await request.body()
+
+    print(raw_body.decode())
+
+    print(request.headers)
+
+    return {"success": True}
+
     # -------------------------------------
     # Basic Auth
     # -------------------------------------
